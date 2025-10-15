@@ -1,0 +1,29 @@
+{
+  "name": "azure-devops-retro-pro",
+  "version": "4.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tfx extension create --manifest-globs vss-extension.json --rev-version",
+    "serve": "vite preview",
+    "publish": "tfx extension publish --manifest-globs vss-extension.json"
+  },
+  "dependencies": {
+    "azure-devops-extension-sdk": "^4.2.0",
+    "lucide-react": "^0.453.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.10",
+    "tfx-cli": "^0.17.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8"
+  }
+}

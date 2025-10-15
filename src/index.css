@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sticky note helpers */
+.note {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.note:hover {
+  transform: rotate(0deg) translateY(-1px);
+}
+
+
+/* === Retrotool-like sticky notes === */
+/* === Sticky Notes: quadratisch, flach === */
+.sticky-note {
+  @apply rounded-lg border shadow-md p-3 relative;
+  width: 160px;
+  height: 160px;
+  background: #fff9c4; /* hellgelb */
+  border-color: #f6e58d;
+  transition: transform 120ms ease, box-shadow 150ms ease;
+  transform: none !important;
+}
+
+.sticky-note:before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: #e57373; /* kleine rote Stecknadel */
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.sticky-note:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+
+
+/* subtle board background */
+.board-bg {
+  background-image:
+    radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,0.02), rgba(0,0,0,0.02));
+  background-size: 16px 16px, 100% 100%;
+  background-position: 0 0, 0 0;
+}
+
+/* column drop zones */
+.drop-zone {
+  @apply rounded-lg border-2 border-dashed border-slate-300 p-2;
+  min-height: 140px;
+}
+.drop-zone.drag-over {
+  @apply border-slate-500 bg-slate-50;
+}
