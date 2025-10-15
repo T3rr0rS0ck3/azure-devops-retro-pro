@@ -65,7 +65,9 @@ export default function TeamColumn({ columnId, title }: Props) {
   return (
     <section className="min-h-[60vh] flex flex-col rounded-xl bg-white/70 backdrop-blur border border-slate-200 shadow-sm">
       <header className="px-4 py-3 border-b bg-white/60 rounded-t-xl sticky top-0 z-10">
-        <h2 className="font-semibold text-slate-800">{title}</h2>
+        <header className="px-4 py-3 border-b bg-white/60 rounded-t-xl sticky top-0 z-10 flex items-center justify-between">
+          <EditableTitle columnId={columnId} initialTitle={title} />
+        </header>
       </header>
 
       <div className="grid grid-rows-[auto_auto_1fr_auto_auto_1fr] gap-2 p-4 flex-1">
@@ -77,11 +79,10 @@ export default function TeamColumn({ columnId, title }: Props) {
           onDragLeave={() => setDragOverArea(null)}
           onDrop={onDropTeam}
         >
-
           {/* Kartenliste (2 Reihen sichtbar, dann scroll) */}
           <div
             className="relative"
-            style={{ maxHeight: "340px", overflowY: "auto" }} // 2 Reihen (je ca. 160px + Spacing)
+            style={{ maxHeight: "340px", overflowY: "auto" }}
           >
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 place-items-center pb-4">
               {publicCards.map((c) => (
@@ -95,6 +96,11 @@ export default function TeamColumn({ columnId, title }: Props) {
                   fromCol={columnId}
                 />
               ))}
+              {publicCards.length === 0 && (
+                <p className="text-sm text-slate-400 italic py-4">
+                  Noch keine öffentlichen Notizen.
+                </p>
+              )}
             </div>
           </div>
         </section>
@@ -107,35 +113,17 @@ export default function TeamColumn({ columnId, title }: Props) {
           onDragLeave={() => setDragOverArea(null)}
           onDrop={onDropPrivate}
         >
-          <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3 sticky top-0 bg-slate-50/90 backdrop-blur-sm py-1 z-10">
-            Meine Ideen (privat)
-          </h3>
-
-          {/* Eingabe */}
-          <form
-            className="flex gap-2 mb-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (textPrivate.trim()) {
-                addMyCard(columnId, textPrivate.trim());
-                setTextPrivate("");
-              }
-            }}
-          >
-            <textarea
-              value={textPrivate}
-              onChange={(e) => setTextPrivate(e.target.value)}
-              placeholder="Private Notiz hinzufügen…"
-              className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus:ring focus:ring-slate-200 bg-white"
-              rows={2}
-            />
+          <div className="flex items-center justify-between mb-3 sticky top-0 bg-slate-50/90 backdrop-blur-sm py-1 z-10">
+            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+              Private
+            </h3>
             <button
-              type="submit"
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-slate-600 text-white text-sm hover:opacity-90"
+              onClick={() => addMyCard(columnId, "")}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-600 text-white text-sm hover:opacity-90"
             >
-              <Plus size={16} /> Privat
+              <Plus size={16} /> Hinzufügen
             </button>
-          </form>
+          </div>
 
           {/* Kartenliste (2 Reihen sichtbar, dann scroll) */}
           <div
@@ -154,9 +142,15 @@ export default function TeamColumn({ columnId, title }: Props) {
                   fromCol={columnId}
                 />
               ))}
+              {privateCards.length === 0 && (
+                <p className="text-sm text-slate-400 italic py-4">
+                  Noch keine privaten Notizen. Klicke auf <b>„+ Hinzufügen“</b>.
+                </p>
+              )}
             </div>
           </div>
         </section>
+
       </div>
     </section>
   );
@@ -217,6 +211,50 @@ function StickyCard({ id, text, onEdit, onDelete, draggableType, fromCol }: Card
             <button className="text-sm text-red-600" title="Löschen" onClick={onDelete}><Trash2 size={16} /></button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function EditableTitle({ columnId, initialTitle }: { columnId: string; initialTitle: string }) {
+  const { columns, updateColumnTitle } = useSession();
+  const [editing, setEditing] = React.useState(false);
+  const [value, setValue] = React.useState(initialTitle);
+
+  const onSave = () => {
+    setEditing(false);
+    if (value.trim().length > 0 && value !== initialTitle) {
+      updateColumnTitle(columnId, value.trim());
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 w-full">
+      {editing ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave();
+          }}
+          className="w-full"
+        >
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={onSave}
+            className="w-full bg-yellow-50 border border-yellow-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-300"
+            autoFocus
+          />
+        </form>
+      ) : (
+        <h2
+          className="font-semibold text-slate-800 text-base cursor-pointer hover:underline"
+          onClick={() => setEditing(true)}
+          title="Titel bearbeiten"
+        >
+          {value}
+        </h2>
       )}
     </div>
   );
