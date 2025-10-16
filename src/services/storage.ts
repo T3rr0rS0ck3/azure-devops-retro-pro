@@ -7,17 +7,23 @@ export async function getDataClient() {
   if (_client) return _client;
 
   try {
-    // Ensure SDK is initialized and ready
+    // Wenn SDK nicht initialisiert ist, versuchen wir das
     if (!(SDK as any)._initialized) {
-      SDK.init();
+      console.log("🔄 Initializing Azure DevOps SDK (from storage.ts)...");
+      SDK.init({ loaded: true });
+      await SDK.ready();
     }
-    await SDK.ready();
 
+    const serviceIds = (SDK as any).ServiceIds ?? (SDK as any).getServiceIds?.();
     const token = await SDK.getAccessToken();
-    const dataService = (await (SDK as any).getService((SDK as any).ServiceIds.ExtensionData)) as any;
-    const context = SDK.getExtensionContext();
 
+    // @ts-ignore
+    const dataService = await SDK.getService(serviceIds.ExtensionData);
+    if (!dataService) throw new Error("ExtensionData service unavailable");
+
+    const context = SDK.getExtensionContext();
     _client = await dataService.getExtensionDataManager(context.id, token);
+    console.log("✅ Azure DevOps DataClient ready");
     return _client;
   } catch (err) {
     console.warn("⚠️ Azure DevOps SDK not available, running in local mode:", err);
@@ -39,12 +45,12 @@ export async function getDataClient() {
 export async function getIdentity(): Promise<string> {
   try {
     if (!(SDK as any)._initialized) {
-      SDK.init();
+      SDK.init({ loaded: true });
+      await SDK.ready();
     }
-    await SDK.ready();
     const user = (SDK as any).getUser ? (SDK as any).getUser() : null;
     if (user?.id) return user.id;
-  } catch {}
+  } catch { }
 
   const key = "retro-client-id";
   let id = localStorage.getItem(key);
@@ -62,8 +68,9 @@ export async function getIdentity(): Promise<string> {
 export async function saveTeamValue(key: string, value: any) {
   const client = await getDataClient();
   try {
-    // @ts-ignore options object is accepted by Extension Data service
+    // @ts-ignore
     await client.setValue(key, value, { scopeType: "Project" });
+    console.log(`💾 Saved [${key}] in Project scope`);
   } catch (e) {
     console.error("❌ Fehler beim Speichern (Project Scope):", e);
   }
@@ -74,6 +81,7 @@ export async function loadTeamValue<T = any>(key: string): Promise<T | null> {
   try {
     // @ts-ignore
     const val = await client.getValue(key, { scopeType: "Project" });
+    console.log(`📥 Loaded [${key}] from Project scope`);
     return (val as T) ?? null;
   } catch (e) {
     console.warn("⚠️ Konnte Wert nicht laden (Project Scope):", e);
