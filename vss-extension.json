@@ -14,9 +14,6 @@
     "Azure Boards"
   ],
   "scopes": [
-    "vso.extension",
-    "vso.extension.data",
-    "vso.extension.data_write",
     "vso.extension_data_read",
     "vso.extension_data_write"
   ],
