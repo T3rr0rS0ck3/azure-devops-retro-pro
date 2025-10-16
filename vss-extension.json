@@ -22,6 +22,10 @@
     {
       "path": "dist",
       "addressable": true
+    },
+    {
+      "path": "node_modules/azure-devops-extension-sdk",
+      "addressable": true
     }
   ],
   "content": {
