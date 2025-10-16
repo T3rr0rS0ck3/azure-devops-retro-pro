@@ -5,194 +5,168 @@ import { getDataClient, getIdentity } from "../services/storage";
 export type Column = { id: string; title: string };
 export type Card = { id: string; text: string };
 
+type RetroBoard = {
+  id: string;
+  name: string;
+  columns: Column[];
+  teamCards: Record<string, Card[]>;
+};
+
 type Ctx = {
+  // columns are per board, but we expose current board's columns
   columns: Column[];
   teamCards: Record<string, Card[]>;
   myCardsByCol: Record<string, Card[]>;
+
+  // board management
+  boards: { id: string; name: string }[];
+  activeBoardId: string | null;
+  addBoard: (name: string) => Promise<void>;
+  switchBoard: (id: string) => void;
+  renameBoard: (id: string, name: string) => Promise<void>;
+  deleteBoard: (id: string) => Promise<void>;
+
+  // private cards
   addMyCard: (columnId: string, text: string) => void;
   editMyCard: (columnId: string, id: string, text: string) => void;
   deleteMyCard: (columnId: string, id: string) => void;
   moveMyCard: (fromCol: string, toCol: string, id: string) => void;
   clearMyColumn: (columnId: string) => void;
 
+  // team cards
   addTeamCard: (columnId: string, text: string) => Promise<void>;
   editTeamCard: (columnId: string, id: string, text: string) => Promise<void>;
   deleteTeamCard: (columnId: string, id: string) => Promise<void>;
   moveTeamCard: (fromCol: string, toCol: string, id: string) => Promise<void>;
-
   promoteToTeam: (fromCol: string, id: string, toCol?: string) => Promise<void>;
-  demoteToMyArea: (fromCol: string, id: string, toCol?: string) => Promise<void>;
-
-  updateColumnTitle: (columnId: string, newTitle: string) => void;
+  demoteToMyArea: (fromCol: string, id: string, toCol?: string) => void;
+  updateColumnTitle: (colId: string, title: string) => Promise<void>;
 };
-
-const defaultColumns: Column[] = [
-  { id: "wentWell", title: "✅ Gut" },
-  { id: "toImprove", title: "❌ Schlecht" },
-  { id: "actionItems", title: "📋 Verbesserungsvorschläge" }
-];
 
 const SessionContext = createContext<Ctx>(null as any);
 export const useSession = () => useContext(SessionContext);
 
-const COLLECTION_PREFIX = "retro-v4";
-const KEY_TEAM = `${COLLECTION_PREFIX}-team`;
-const KEY_MY = (uid: string) => `${COLLECTION_PREFIX}-mycards-${uid}`;
+const COLLECTION_PREFIX = "retro-v5";
+const KEY_TEAM = `${COLLECTION_PREFIX}-boards`; // stores array of boards
+const KEY_MY = (uid: string, boardId: string) => `${COLLECTION_PREFIX}-mycards-${uid}-${boardId}`;
+
+const defaultColumns: Column[] = [
+  { id: "wentWell", title: "✅ Gut gelaufen" },
+  { id: "toImprove", title: "🛠️ Verbesserung" },
+  { id: "actionItems", title: "📋 Aktionen" }
+];
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [columns, setColumns] = useState<Column[]>(defaultColumns);
+  const [userId, setUserId] = useState<string>("");
+  const [boards, setBoards] = useState<RetroBoard[]>([]);
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
+
+  const currentBoard = useMemo(() => boards.find(b => b.id === activeBoardId) || null, [boards, activeBoardId]);
+  const columns = currentBoard?.columns || defaultColumns;
   const [teamCards, setTeamCards] = useState<Record<string, Card[]>>({ wentWell: [], toImprove: [], actionItems: [] });
   const [myCardsByCol, setMyCardsByCol] = useState<Record<string, Card[]>>({ wentWell: [], toImprove: [], actionItems: [] });
-  const [userId, setUserId] = useState<string>("");
 
-  useEffect(() => {
-    // 🟢 Sofort versuchen, lokale Daten zu laden (offline verfügbar)
-    loadMyData();
+  function getMyKey(uid?: string, boardId?: string) {
+    const id = uid || userId || "local";
+    const bid = boardId || activeBoardId || "default";
+    return KEY_MY(id, bid);
+  }
 
-    // 🟢 Dann User-ID laden (async) und Teamdaten + private Daten synchronisieren
-    (async () => {
-      try {
-        const uid = await getIdentity();
-        console.log("👤 Azure User-ID:", uid);
-        setUserId(uid);
-
-        await loadTeamData();
-
-        // Falls lokale Daten unter "local" existieren, migriere sie
-        const localKey = getMyKey("local");
-        const userKey = getMyKey(uid);
-        if (localStorage.getItem(localKey) && !localStorage.getItem(userKey)) {
-          console.log("🔄 Migration lokaler Daten → User:", uid);
-          localStorage.setItem(userKey, localStorage.getItem(localKey)!);
-          localStorage.removeItem(localKey);
-        }
-
-        // Jetzt Benutzer-spezifische Daten laden
-        loadMyData(uid);
-      } catch (e) {
-        console.error("❌ Fehler beim Laden von Benutzer- oder Teamdaten:", e);
-      }
-    })();
-  }, []);
-
-
-  async function loadTeamData() {
+  // --- Loaders ---
+  async function loadBoards() {
     const client = await getDataClient();
     const data = await client.getValue(KEY_TEAM).catch(() => null);
-    if (data) {
-      setColumns(data.columns || defaultColumns);
-      setTeamCards(data.cards || { wentWell: [], toImprove: [], actionItems: [] });
+    if (data && Array.isArray(data) && data.length > 0) {
+      setBoards(data);
+      setActiveBoardId(data[0].id);
+      setTeamCards(data[0].teamCards);
     } else {
-      await client.setValue(KEY_TEAM, { columns: defaultColumns, cards: { wentWell: [], toImprove: [], actionItems: [] } });
+      // migrate legacy if exists
+      const legacy = await client.getValue(`${COLLECTION_PREFIX}-team`).catch(() => null);
+      const initial: RetroBoard = legacy?.cards ? {
+        id: uuidv4(),
+        name: "Erstes Board",
+        columns: legacy.columns || defaultColumns,
+        teamCards: legacy.cards || { wentWell: [], toImprove: [], actionItems: [] }
+      } : {
+        id: uuidv4(),
+        name: "Erstes Board",
+        columns: defaultColumns,
+        teamCards: { wentWell: [], toImprove: [], actionItems: [] }
+      };
+      await client.setValue(KEY_TEAM, [initial]);
+      setBoards([initial]);
+      setActiveBoardId(initial.id);
+      setTeamCards(initial.teamCards);
     }
   }
 
-  function getMyKey(uid?: string) {
-    return uid ? KEY_MY(uid) : `${COLLECTION_PREFIX}-mycards-local`;
-  }
-
-
-  function loadMyData(uid?: string) {
-    const key = getMyKey(uid);
-    const fallback = getMyKey("local");
-
-    // Prüfe zuerst Benutzerkey, sonst lokalen
-    const raw = localStorage.getItem(key) || localStorage.getItem(fallback);
-    if (!raw) {
-      console.log("🟡 Keine gespeicherten privaten Karten gefunden für Key:", key);
-      return;
-    }
-
+  function loadMyData(uid?: string, boardId?: string) {
     try {
-      const parsed = JSON.parse(raw);
-      setMyCardsByCol({
-        wentWell: parsed.wentWell || [],
-        toImprove: parsed.toImprove || [],
-        actionItems: parsed.actionItems || [],
-      });
-      console.log("✅ Private Karten geladen:", key, parsed);
-    } catch (e) {
-      console.error("❌ Fehler beim Laden privater Karten:", e);
+      const key = getMyKey(uid, boardId);
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed) setMyCardsByCol(parsed);
+      else setMyCardsByCol({ wentWell: [], toImprove: [], actionItems: [] });
+    } catch {
       setMyCardsByCol({ wentWell: [], toImprove: [], actionItems: [] });
     }
   }
 
-
-
-  function saveMy(next: Record<string, Card[]>, uidOverride?: string) {
-    const key = getMyKey(uidOverride || userId);
-    try {
-      localStorage.setItem(key, JSON.stringify(next));
-      console.log("💾 Private Karten gespeichert:", key, next);
-    } catch (e) {
-      console.error("❌ Fehler beim Speichern privater Karten:", e);
-    }
-    setMyCardsByCol(next); // <-- erst NACH dem Speichern
-  }
-
-
-
-  async function saveTeam(next: Record<string, Card[]>) {
-    setTeamCards(next);
+  async function saveBoards(next: RetroBoard[]) {
     const client = await getDataClient();
-    await client.setValue(KEY_TEAM, { columns, cards: next });
+    await client.setValue(KEY_TEAM, next);
+    setBoards(next);
   }
 
-  // Private
-  const addMyCard = (columnId: string, text: string) => {
-    const card = { id: uuidv4(), text };
-    const next = { ...myCardsByCol, [columnId]: [...(myCardsByCol[columnId] || []), card] };
-    saveMy(next);
-  };
-  const editMyCard = (columnId: string, id: string, text: string) => {
-    setMyCardsByCol(prev => {
-      const updated = {
-        ...prev,
-        [columnId]: (prev[columnId] || []).map(c => c.id === id ? { ...c, text } : c),
-      };
+  function persistMy(next: Record<string, Card[]>, uidOverride?: string, boardIdOverride?: string) {
+    const key = getMyKey(uidOverride, boardIdOverride);
+    localStorage.setItem(key, JSON.stringify(next));
+    setMyCardsByCol(next);
+  }
 
-      // direkt beim Update speichern
-      const key = getMyKey(userId);
-      try {
-        localStorage.setItem(key, JSON.stringify(updated));
-        console.log("✏️ Karte aktualisiert & gespeichert:", key, updated);
-      } catch (e) {
-        console.error("❌ Fehler beim Editieren privater Karte:", e);
-      }
+  // --- Board operations ---
+  async function addBoard(name: string) {
+    const newB: RetroBoard = { id: uuidv4(), name: name || "Neues Board", columns: defaultColumns, teamCards: { wentWell: [], toImprove: [], actionItems: [] } };
+    const updated = [...boards, newB];
+    await saveBoards(updated);
+    setActiveBoardId(newB.id);
+    setTeamCards(newB.teamCards);
+    loadMyData(userId, newB.id);
+  }
 
-      return updated;
-    });
-  };
+  function switchBoard(id: string) {
+    const found = boards.find(b => b.id === id);
+    if (!found) return;
+    setActiveBoardId(found.id);
+    setTeamCards(found.teamCards);
+    loadMyData(userId, found.id);
+  }
 
-  const deleteMyCard = (columnId: string, id: string) => {
-    setMyCardsByCol(prev => {
-      const updated = {
-        ...prev,
-        [columnId]: (prev[columnId] || []).filter(c => c.id !== id),
-      };
-      const key = getMyKey(userId);
-      localStorage.setItem(key, JSON.stringify(updated));
-      return updated;
-    });
-  };
+  async function renameBoard(id: string, name: string) {
+    const updated = boards.map(b => b.id === id ? { ...b, name } : b);
+    await saveBoards(updated);
+  }
 
-  const moveMyCard = (fromCol: string, toCol: string, id: string) => {
-    const fromList = myCardsByCol[fromCol] || [];
-    const card = fromList.find((c) => c.id === id);
-    if (!card) return;
+  async function deleteBoard(id: string) {
+    const updated = boards.filter(b => b.id !== id);
+    await saveBoards(updated);
+    if (activeBoardId === id) {
+      const next = updated[0] || null;
+      setActiveBoardId(next ? next.id : null);
+      setTeamCards(next ? next.teamCards : { wentWell: [], toImprove: [], actionItems: [] });
+      loadMyData(userId, next?.id || "");
+    }
+  }
 
-    const updated: Record<string, Card[]> = {
-      ...myCardsByCol,
-      [fromCol]: fromList.filter((c) => c.id !== id),
-      [toCol]: [...(myCardsByCol[toCol] || []), card],
-    };
-    saveMy(updated);
-  };
-  const clearMyColumn = (columnId: string) => {
-    const next = { ...myCardsByCol, [columnId]: [] };
-    saveMy(next);
-  };
-  // Team
+  // --- Team operations ---
+  async function saveTeam(next: Record<string, Card[]>) {
+    if (!currentBoard) return;
+    setTeamCards(next);
+    const updated = boards.map(b => b.id === currentBoard.id ? { ...b, teamCards: next } : b);
+    await saveBoards(updated);
+  }
+
   const addTeamCard = async (columnId: string, text: string) => {
     const card = { id: uuidv4(), text };
     await saveTeam({ ...teamCards, [columnId]: [...(teamCards[columnId] || []), card] });
@@ -205,86 +179,117 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   };
   const moveTeamCard = async (fromCol: string, toCol: string, id: string) => {
     const fromList = teamCards[fromCol] || [];
-    const card = fromList.find((c) => c.id === id);
+    const card = fromList.find(c => c.id === id);
     if (!card) return;
-
     const updatedTeam: Record<string, Card[]> = {
       ...teamCards,
-      [fromCol]: fromList.filter((c) => c.id !== id),
+      [fromCol]: fromList.filter(c => c.id !== id),
       [toCol]: [...(teamCards[toCol] || []), card],
     };
-    setTeamCards(updatedTeam);
-    const client = await getDataClient();
-    await client.setValue(KEY_TEAM, { columns, cards: updatedTeam });
+    await saveTeam(updatedTeam);
   };
 
+  // --- My operations (per board, per user) ---
+  const addMyCard = (columnId: string, text: string) => {
+    const card = { id: uuidv4(), text };
+    const next = { ...myCardsByCol, [columnId]: [...(myCardsByCol[columnId] || []), card] };
+    persistMy(next);
+  };
+  const editMyCard = (columnId: string, id: string, text: string) => {
+    const next = { ...myCardsByCol, [columnId]: (myCardsByCol[columnId] || []).map(c => c.id === id ? { ...c, text } : c) };
+    persistMy(next);
+  };
+  const deleteMyCard = (columnId: string, id: string) => {
+    const next = { ...myCardsByCol, [columnId]: (myCardsByCol[columnId] || []).filter(c => c.id !== id) };
+    persistMy(next);
+  };
+  const moveMyCard = (fromCol: string, toCol: string, id: string) => {
+    const fromList = myCardsByCol[fromCol] || [];
+    const card = fromList.find(c => c.id === id);
+    if (!card) return;
+    const next = {
+      ...myCardsByCol,
+      [fromCol]: fromList.filter(c => c.id !== id),
+      [toCol]: [...(myCardsByCol[toCol] || []), card]
+    };
+    persistMy(next);
+  };
+  const clearMyColumn = (columnId: string) => {
+    const next = { ...myCardsByCol, [columnId]: [] };
+    persistMy(next);
+  };
+
+  // Promote / demote between areas
   const promoteToTeam = async (fromCol: string, id: string, toCol?: string) => {
-    const srcList = myCardsByCol[fromCol] || [];
-    const card = srcList.find((c) => c.id === id);
+    const fromList = myCardsByCol[fromCol] || [];
+    const card = fromList.find(c => c.id === id);
     if (!card) return;
-
-    // 1) Privat sofort updaten (lokal + localStorage)
-    const updatedMy: Record<string, Card[]> = {
-      ...myCardsByCol,
-      [fromCol]: srcList.filter((c) => c.id !== id),
-    };
-    saveMy(updatedMy);
-
-    // 2) Team sofort/lokal updaten + persistent speichern
-    const targetCol = toCol || fromCol;
-    const updatedTeam: Record<string, Card[]> = {
-      ...teamCards,
-      [targetCol]: [...(teamCards[targetCol] || []), { id: uuidv4(), text: card.text }],
-    };
-    setTeamCards(updatedTeam);
-    const client = await getDataClient();
-    await client.setValue(KEY_TEAM, { columns, cards: updatedTeam });
+    await addTeamCard(toCol || fromCol, card.text);
+    const next = { ...myCardsByCol, [fromCol]: fromList.filter(c => c.id !== id) };
+    persistMy(next);
   };
-
-  const demoteToMyArea = async (fromCol: string, id: string, toCol?: string) => {
-    const srcList = teamCards[fromCol] || [];
-    const card = srcList.find((c) => c.id === id);
+  const demoteToMyArea = (fromCol: string, id: string, toCol?: string) => {
+    const fromList = teamCards[fromCol] || [];
+    const card = fromList.find(c => c.id === id);
     if (!card) return;
-
-    // 1) Team sofort/lokal updaten + persistent speichern
-    const updatedTeam: Record<string, Card[]> = {
-      ...teamCards,
-      [fromCol]: srcList.filter((c) => c.id !== id),
-    };
-    setTeamCards(updatedTeam);
-    const client = await getDataClient();
-    await client.setValue(KEY_TEAM, { columns, cards: updatedTeam });
-
-    // 2) Privat sofort updaten (lokal + localStorage)
     const target = toCol || fromCol;
-    const updatedMy: Record<string, Card[]> = {
-      ...myCardsByCol,
-      [target]: [...(myCardsByCol[target] || []), { id: uuidv4(), text: card.text }],
-    };
-    saveMy(updatedMy);
+    const next = { ...myCardsByCol, [target]: [...(myCardsByCol[target] || []), { id: uuidv4(), text: card.text }] };
+    persistMy(next);
   };
 
-
-  const updateColumnTitle = (columnId: string, newTitle: string) => {
-    const updated = columns.map((c) =>
-      c.id === columnId ? { ...c, title: newTitle } : c
-    );
-    setColumns(updated);
-    // Optional: Wenn du willst, auch im DevOps-Storage speichern:
-    getDataClient().then((client) =>
-      client.setValue(KEY_TEAM, { columns: updated, cards: teamCards })
-    );
+  const updateColumnTitle = async (colId: string, title: string) => {
+    if (!currentBoard) return;
+    const nextCols = columns.map(c => c.id === colId ? ({ ...c, title }) : c);
+    const updated = boards.map(b => b.id === currentBoard.id ? { ...b, columns: nextCols } : b);
+    await saveBoards(updated);
   };
+
+  // Initial load
+  useEffect(() => {
+    (async () => {
+      const uid = await getIdentity();
+      setUserId(uid);
+      await loadBoards();
+      // my cards will be loaded after active board set
+    })();
+  }, []);
+
+  // When active board changes, reload my cards for that board
+  useEffect(() => {
+    if (userId && activeBoardId) loadMyData(userId, activeBoardId);
+  }, [userId, activeBoardId]);
+
+  // Optional polling to sync teamCards across tabs
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const client = await getDataClient();
+        const data = await client.getValue(KEY_TEAM).catch(() => null);
+        if (data && Array.isArray(data)) {
+          const found = activeBoardId ? data.find((b: RetroBoard) => b.id === activeBoardId) : null;
+          if (found) {
+            // Compare shallow content to reduce churn
+            const current = JSON.stringify(teamCards);
+            const incoming = JSON.stringify(found.teamCards);
+            if (current !== incoming) {
+              setTeamCards(found.teamCards);
+            }
+          }
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(id);
+  }, [activeBoardId, teamCards]);
 
   const value: Ctx = useMemo(() => ({
     columns, teamCards, myCardsByCol,
+    boards: boards.map(b => ({ id: b.id, name: b.name })),
+    activeBoardId,
+    addBoard, switchBoard, renameBoard, deleteBoard,
     addMyCard, editMyCard, deleteMyCard, moveMyCard, clearMyColumn,
     addTeamCard, editTeamCard, deleteTeamCard, moveTeamCard,
     promoteToTeam, demoteToMyArea, updateColumnTitle
-  }), [columns, teamCards, myCardsByCol]);
-
-
-
+  }), [columns, teamCards, myCardsByCol, boards, activeBoardId]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

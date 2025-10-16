@@ -15,21 +15,37 @@ function toMarkdown(teamCards: Record<string, {id:string;text:string}[]>, column
 }
 
 export default function HeaderBar() {
-  const { teamCards, columns } = useSession();
+  const { columns, teamCards, boards, activeBoardId, switchBoard, addBoard } = useSession();
 
   const download = () => {
     const md = toMarkdown(teamCards, columns);
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "retro-export.md"; a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <header className="flex items-center justify-between px-4 py-3 bg-blue-600 text-white shadow">
+    <header className="flex items-center justify-between px-4 py-3 bg-blue-600 text-white shadow sticky top-0 z-30">
       <h1 className="text-lg font-semibold">Team Retrospective Pro</h1>
       <div className="flex items-center gap-2">
-        <button onClick={download} className="px-3 py-1.5 bg-white text-blue-700 rounded shadow hover:shadow-md">Export Markdown</button>
+        <select
+          value={activeBoardId || ""}
+          onChange={(e) => switchBoard(e.target.value)}
+          className="text-blue-900 bg-white rounded px-2 py-1 text-sm"
+        >
+          {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <button
+          onClick={() => {
+            const name = prompt("Name des neuen Boards:");
+            if (name) addBoard(name);
+          }}
+          className="px-3 py-1.5 bg-white text-blue-700 rounded shadow hover:shadow-md text-sm"
+        >
+          + Neues Board
+        </button>
+        <button onClick={download} className="px-3 py-1.5 bg-white text-blue-700 rounded shadow hover:shadow-md text-sm">Export Markdown</button>
       </div>
     </header>
   );
