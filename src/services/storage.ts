@@ -9,7 +9,7 @@ export async function getDataClient() {
     // SDK korrekt initialisieren
     if (!(SDK as any)._initialized) {
       console.log("🔄 Initializing Azure DevOps SDK (from storage.ts)...");
-      SDK.init({ loaded: true });
+      SDK.init();
       await SDK.ready();
     }
 
@@ -47,7 +47,7 @@ export async function getIdentity(): Promise<string> {
   try {
     if (!(SDK as any)._initialized) {
       console.log("🔄 Initializing Azure DevOps SDK (from storage.ts)...");
-      SDK.init({ loaded: true });
+      SDK.init();
       await SDK.ready();
     }
     const user = (SDK as any).getUser ? (SDK as any).getUser() : null;
