@@ -6,25 +6,30 @@ export async function getDataClient() {
   if (_client) return _client;
 
   try {
-    // SDK muss initialisiert sein
+    // SDK korrekt initialisieren
     if (!(SDK as any)._initialized) {
       SDK.init({ loaded: true });
       await SDK.ready();
     }
 
-    const token = await SDK.getAccessToken();
+    // Kontext holen und prüfen
+    const context = SDK.getExtensionContext();
+    if (!context || !context.publisherId) {
+      throw new Error("ExtensionContext not available or invalid");
+    }
 
-    // 👇 Neu: expliziter Dienstname statt SDK.ServiceIds
+    const token = await SDK.getAccessToken();
+    // Neuer, stabiler Servicezugriff
     const dataService = await SDK.getService<any>("ms.vss-web.data-service");
     if (!dataService) throw new Error("ExtensionData service unavailable");
 
-    const context = SDK.getExtensionContext();
-    _client = await dataService.getExtensionDataManager(context.id, token);
-    console.log("✅ Azure DevOps DataClient ready");
+    _client = await dataService.getExtensionDataManager(`${context.publisherId}.${context.extensionId}`, token);
+    console.log("✅ Azure DevOps DataClient ready for", `${context.publisherId}.${context.extensionId}`);
     return _client;
   } catch (err) {
     console.warn("⚠️ Azure DevOps SDK not available, running in local mode:", err);
 
+    // Fallback für lokale Entwicklung
     const localStore: Record<string, any> = {};
     return {
       async getValue(key: string) {
