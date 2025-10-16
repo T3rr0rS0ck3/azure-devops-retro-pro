@@ -4,5 +4,10 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   server: { port: 5173, open: true },
-  build: { outDir: "dist" }
+  build: { outDir: "dist" },
+  resolve: {
+    alias: {
+      "azure-devops-extension-sdk": "/node_modules/azure-devops-extension-sdk/azure-devops-extension-sdk.js",
+    },
+  }
 });
