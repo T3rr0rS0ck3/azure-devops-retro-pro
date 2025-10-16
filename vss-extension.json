@@ -13,10 +13,6 @@
   "categories": [
     "Azure Boards"
   ],
-  "scopes": [
-    "vso.extension_data_read",
-    "vso.extension_data_write"
-  ],
   "files": [
     {
       "path": "dist",
