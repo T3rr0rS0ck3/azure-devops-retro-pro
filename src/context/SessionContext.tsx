@@ -276,7 +276,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             }
           }
         }
-      } catch {}
+      } catch { }
     }, 3000);
     return () => clearInterval(id);
   }, [activeBoardId, teamCards]);
