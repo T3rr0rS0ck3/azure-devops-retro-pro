@@ -1,8 +1,9 @@
 import React from "react";
-import * as SDK from "azure-devops-extension-sdk";
 import HeaderBar from "./components/HeaderBar";
 import { SessionProvider } from "./context/SessionContext";
 import TeamBoard from "./components/TeamBoard";
+
+declare const SDK: any;
 
 SDK.init({ loaded: false }).then(() => SDK.ready().then(() => SDK.notifyLoadSucceeded()));
 

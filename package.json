@@ -10,6 +10,7 @@
     "publish": "tfx extension publish --manifest-globs vss-extension.json"
   },
   "dependencies": {
+    "azure-devops-extension-api": "^4.261.0",
     "azure-devops-extension-sdk": "^4.2.0",
     "lucide-react": "^0.453.0",
     "react": "^18.2.0",
@@ -17,6 +18,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.8",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "@types/uuid": "^11.0.0",

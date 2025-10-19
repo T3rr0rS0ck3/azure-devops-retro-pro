@@ -4,5 +4,20 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   server: { port: 5173, open: true },
-  build: { outDir: "dist", minify: false },
+  build: {
+    outDir: "dist",
+    minify: false,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
+    }
+  },
+  optimizeDeps: {
+    include: ["azure-devops-extension-sdk"], // ⬅ erzwingt Pre-Bundle
+    esbuildOptions: { target: "esnext" }
+  },
+  ssr: {
+    noExternal: ["azure-devops-extension-sdk"], // ⬅ verhindert tree-shaking
+  },
 });

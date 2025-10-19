@@ -1,4 +1,4 @@
-import * as SDK from "azure-devops-extension-sdk";
+declare const SDK: any;
 
 let _client: any = null;
 export async function getDataClient() {
