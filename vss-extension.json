@@ -16,7 +16,8 @@
   "scopes": [
     "vso.extension",
     "vso.extension.data",
-    "vso.extension.data_write"
+    "vso.extension_data_write",
+    "vso.extension_data_read"
   ],
   "files": [
     {
@@ -38,7 +39,11 @@
       ],
       "properties": {
         "name": "Retrospective",
-        "uri": "dist/index.html"
+        "uri": "dist/index.html",
+        "supportsScopes": [
+          "project",
+          "user"
+        ]
       }
     }
   ]
