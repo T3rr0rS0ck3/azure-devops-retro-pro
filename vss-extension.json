@@ -43,6 +43,17 @@
           "user"
         ]
       }
+    },
+    {
+      "id": "retro-pro-data-provider",
+      "type": "ms.vss-web.data-provider",
+      "targets": [
+        "ms.vss-web.project-hub-group"
+      ],
+      "properties": {
+        "name": "RetroPro Data Provider",
+        "serviceInstanceType": "ms.vss-extension-data-service"
+      }
     }
   ]
 }
