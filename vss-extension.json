@@ -15,9 +15,7 @@
   ],
   "scopes": [
     "vso.extension",
-    "vso.extension.data",
-    "vso.extension_data_write",
-    "vso.extension_data_read"
+    "vso.extension.data"
   ],
   "files": [
     {
