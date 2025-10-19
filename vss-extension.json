@@ -13,13 +13,14 @@
   "categories": [
     "Azure Boards"
   ],
+  "scopes": [
+    "vso.extension",
+    "vso.extension.data",
+    "vso.extension.data_write"
+  ],
   "files": [
     {
       "path": "dist",
-      "addressable": true
-    },
-    {
-      "path": "node_modules/azure-devops-extension-sdk",
       "addressable": true
     }
   ],
@@ -33,7 +34,7 @@
       "id": "retro-pro-hub",
       "type": "ms.vss-web.hub",
       "targets": [
-        "ms.vss-web.project-hub-group"
+        "ms.vss-work-web.work-hub-group"
       ],
       "properties": {
         "name": "Retrospective",

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { getIdentity, loadTeamValue, saveTeamValue, loadMyLocal, saveMyLocal } from "../services/storage";
+import { getDataClient, getIdentity } from "../services/storage";
 
 export type Column = { id: string; title: string };
 export type Card = { id: string; text: string };
@@ -13,10 +13,12 @@ type RetroBoard = {
 };
 
 type Ctx = {
+  // columns are per board, but we expose current board's columns
   columns: Column[];
   teamCards: Record<string, Card[]>;
   myCardsByCol: Record<string, Card[]>;
 
+  // board management
   boards: { id: string; name: string }[];
   activeBoardId: string | null;
   addBoard: (name: string) => Promise<void>;
@@ -24,12 +26,14 @@ type Ctx = {
   renameBoard: (id: string, name: string) => Promise<void>;
   deleteBoard: (id: string) => Promise<void>;
 
+  // private cards
   addMyCard: (columnId: string, text: string) => void;
   editMyCard: (columnId: string, id: string, text: string) => void;
   deleteMyCard: (columnId: string, id: string) => void;
   moveMyCard: (fromCol: string, toCol: string, id: string) => void;
   clearMyColumn: (columnId: string) => void;
 
+  // team cards
   addTeamCard: (columnId: string, text: string) => Promise<void>;
   editTeamCard: (columnId: string, id: string, text: string) => Promise<void>;
   deleteTeamCard: (columnId: string, id: string) => Promise<void>;
@@ -43,7 +47,7 @@ const SessionContext = createContext<Ctx>(null as any);
 export const useSession = () => useContext(SessionContext);
 
 const COLLECTION_PREFIX = "retro-v5";
-const KEY_BOARDS = `${COLLECTION_PREFIX}-boards`; // teamweit
+const KEY_TEAM = `${COLLECTION_PREFIX}-boards`; // stores array of boards
 const KEY_MY = (uid: string, boardId: string) => `${COLLECTION_PREFIX}-mycards-${uid}-${boardId}`;
 
 const defaultColumns: Column[] = [
@@ -62,54 +66,66 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [teamCards, setTeamCards] = useState<Record<string, Card[]>>({ wentWell: [], toImprove: [], actionItems: [] });
   const [myCardsByCol, setMyCardsByCol] = useState<Record<string, Card[]>>({ wentWell: [], toImprove: [], actionItems: [] });
 
-  function myKey(uid?: string, boardId?: string) {
+  function getMyKey(uid?: string, boardId?: string) {
     const id = uid || userId || "local";
     const bid = boardId || activeBoardId || "default";
     return KEY_MY(id, bid);
   }
 
-  // --- Team Boards laden/speichern ---
+  // --- Loaders ---
   async function loadBoards() {
-    const data = await loadTeamValue<RetroBoard[]>(KEY_BOARDS);
+    const client = await getDataClient();
+    const data = await client.getValue(KEY_TEAM).catch(() => null);
     if (data && Array.isArray(data) && data.length > 0) {
       setBoards(data);
       setActiveBoardId(data[0].id);
       setTeamCards(data[0].teamCards);
     } else {
-      // initialisieren (leeres Standardboard)
-      const initial: RetroBoard = {
+      // migrate legacy if exists
+      const legacy = await client.getValue(`${COLLECTION_PREFIX}-team`).catch(() => null);
+      const initial: RetroBoard = legacy?.cards ? {
+        id: uuidv4(),
+        name: "Erstes Board",
+        columns: legacy.columns || defaultColumns,
+        teamCards: legacy.cards || { wentWell: [], toImprove: [], actionItems: [] }
+      } : {
         id: uuidv4(),
         name: "Erstes Board",
         columns: defaultColumns,
         teamCards: { wentWell: [], toImprove: [], actionItems: [] }
       };
-      await saveTeamValue(KEY_BOARDS, [initial]);
+      await client.setValue(KEY_TEAM, [initial]);
       setBoards([initial]);
       setActiveBoardId(initial.id);
       setTeamCards(initial.teamCards);
     }
   }
 
+  function loadMyData(uid?: string, boardId?: string) {
+    try {
+      const key = getMyKey(uid, boardId);
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed) setMyCardsByCol(parsed);
+      else setMyCardsByCol({ wentWell: [], toImprove: [], actionItems: [] });
+    } catch {
+      setMyCardsByCol({ wentWell: [], toImprove: [], actionItems: [] });
+    }
+  }
+
   async function saveBoards(next: RetroBoard[]) {
-    await saveTeamValue(KEY_BOARDS, next);
+    const client = await getDataClient();
+    await client.setValue(KEY_TEAM, next);
     setBoards(next);
   }
 
-  // --- Private (pro Board & User) ---
-  function loadMyData(uid?: string, boardId?: string) {
-    const key = myKey(uid, boardId);
-    const parsed = loadMyLocal<Record<string, Card[]>>(key);
-    if (parsed) setMyCardsByCol(parsed);
-    else setMyCardsByCol({ wentWell: [], toImprove: [], actionItems: [] });
-  }
-
   function persistMy(next: Record<string, Card[]>, uidOverride?: string, boardIdOverride?: string) {
-    const key = myKey(uidOverride, boardIdOverride);
-    saveMyLocal(key, next);
+    const key = getMyKey(uidOverride, boardIdOverride);
+    localStorage.setItem(key, JSON.stringify(next));
     setMyCardsByCol(next);
   }
 
-  // --- Board-Operationen ---
+  // --- Board operations ---
   async function addBoard(name: string) {
     const newB: RetroBoard = { id: uuidv4(), name: name || "Neues Board", columns: defaultColumns, teamCards: { wentWell: [], toImprove: [], actionItems: [] } };
     const updated = [...boards, newB];
@@ -143,7 +159,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // --- Team-Operationen (persistiert im Team-Storage) ---
+  // --- Team operations ---
   async function saveTeam(next: Record<string, Card[]>) {
     if (!currentBoard) return;
     setTeamCards(next);
@@ -173,7 +189,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     await saveTeam(updatedTeam);
   };
 
-  // --- Private Operationen (lokal, pro Board & User) ---
+  // --- My operations (per board, per user) ---
   const addMyCard = (columnId: string, text: string) => {
     const card = { id: uuidv4(), text };
     const next = { ...myCardsByCol, [columnId]: [...(myCardsByCol[columnId] || []), card] };
@@ -203,7 +219,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     persistMy(next);
   };
 
-  // Promote / demote
+  // Promote / demote between areas
   const promoteToTeam = async (fromCol: string, id: string, toCol?: string) => {
     const fromList = myCardsByCol[fromCol] || [];
     const card = fromList.find(c => c.id === id);
@@ -234,28 +250,33 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const uid = await getIdentity();
       setUserId(uid);
       await loadBoards();
-      // my-cards werden im folgenden Effekt geladen
+      // my cards will be loaded after active board set
     })();
   }, []);
 
-  // load my-cards when board or user changes
+  // When active board changes, reload my cards for that board
   useEffect(() => {
     if (userId && activeBoardId) loadMyData(userId, activeBoardId);
   }, [userId, activeBoardId]);
 
-  // Polling zur Synchronisation zwischen mehreren Tabs
+  // Optional polling to sync teamCards across tabs
   useEffect(() => {
     const id = setInterval(async () => {
-      const data = await loadTeamValue<RetroBoard[]>(KEY_BOARDS);
-      if (!data) return;
-      const found = activeBoardId ? data.find(b => b.id === activeBoardId) : null;
-      if (found) {
-        const current = JSON.stringify(teamCards);
-        const incoming = JSON.stringify(found.teamCards);
-        if (current !== incoming) {
-          setTeamCards(found.teamCards);
+      try {
+        const client = await getDataClient();
+        const data = await client.getValue(KEY_TEAM).catch(() => null);
+        if (data && Array.isArray(data)) {
+          const found = activeBoardId ? data.find((b: RetroBoard) => b.id === activeBoardId) : null;
+          if (found) {
+            // Compare shallow content to reduce churn
+            const current = JSON.stringify(teamCards);
+            const incoming = JSON.stringify(found.teamCards);
+            if (current !== incoming) {
+              setTeamCards(found.teamCards);
+            }
+          }
         }
-      }
+      } catch {}
     }, 3000);
     return () => clearInterval(id);
   }, [activeBoardId, teamCards]);
