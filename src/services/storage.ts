@@ -13,7 +13,7 @@ export async function getDataClient() {
 
   try {
     SDK.init({ loaded: false });
-  } catch {}
+  } catch { }
 
   try {
     await SDK.ready();
@@ -55,3 +55,20 @@ function mockDataClient() {
     }
   };
 }
+
+export async function getIdentity() {
+  const SDK = (window as any).VSS || (window as any).SDK;
+  try {
+    await SDK.ready();
+    const user = SDK.getUser();
+    return {
+      id: user.id,
+      name: user.displayName,
+      email: user.uniqueName
+    };
+  } catch (e) {
+    console.warn("⚠️ Could not get user identity, using fallback", e);
+    return { id: "local", name: "Local User", email: "local@localhost" };
+  }
+}
+
