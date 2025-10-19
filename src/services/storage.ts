@@ -8,7 +8,7 @@ export async function getDataClient() {
   const token = await SDK.getAccessToken();
 
   // @ts-ignore
-  const dataService = await SDK.getService(SDK.ServiceIds.ExtensionData);
+  const dataService = await SDK.getService("ms.vss-extension-data-service");
 
   // @ts-ignore
   _client = await dataService.getExtensionDataManager(SDK.getExtensionContext().id, token);
