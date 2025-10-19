@@ -5,7 +5,9 @@ import TeamBoard from "./components/TeamBoard";
 
 const SDK = (window as any).VSS || (window as any).SDK;
 
-SDK.init({ loaded: false }).then(() => SDK.ready().then(() => SDK.notifyLoadSucceeded()));
+SDK.init({ loaded: false });
+await SDK.ready();
+SDK.notifyLoadSucceeded();
 
 export default function App() {
   return (
