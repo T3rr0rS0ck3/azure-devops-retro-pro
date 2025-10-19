@@ -1,4 +1,4 @@
-declare const SDK: any;
+const SDK = (window as any).VSS || (window as any).SDK;
 
 let _client: any = null;
 export async function getDataClient() {

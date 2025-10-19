@@ -3,7 +3,7 @@ import HeaderBar from "./components/HeaderBar";
 import { SessionProvider } from "./context/SessionContext";
 import TeamBoard from "./components/TeamBoard";
 
-declare const SDK: any;
+const SDK = (window as any).VSS || (window as any).SDK;
 
 SDK.init({ loaded: false }).then(() => SDK.ready().then(() => SDK.notifyLoadSucceeded()));
 
